@@ -424,16 +424,26 @@ boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
 
         mv "$QUEUE" "$WORK"
 
-        # Dedup before any IO
-        DEDUPED=$(sort -u "$WORK" | grep -v '^$')
+        # Expand closures so runtime deps are also checked
+        ALL_CLOSURE=""
+        while IFS= read -r path; do
+          [ -z "$path" ] && continue
+          ALL_CLOSURE="$ALL_CLOSURE
+$(${pkgs.nix}/bin/nix-store -qR "$path" 2>/dev/null || true)"
+        done < "$WORK"
         rm -f "$WORK"
+
+        # Dedup before any IO
+        DEDUPED=$(echo "$ALL_CLOSURE" | sort -u | grep '^/nix/store/')
+        COUNT=$(echo "$DEDUPED" | wc -l)
+        echo "$COUNT unique paths after closure expansion + dedup" >&2
 
         export NIX_SSHOPTS="-i /home/jappie/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
 
+        TOPUSH=""
         echo "$DEDUPED" | while IFS= read -r path; do
           HASH=$(basename "$path" | cut -d- -f1)
           if ${pkgs.curl}/bin/curl -sf "https://cache.nixos.org/$HASH.narinfo" > /dev/null 2>&1; then
-            echo "skipping (on cache.nixos.org): $path" >&2
             continue
           fi
           echo "pushing: $path" >&2
