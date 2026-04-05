@@ -3,40 +3,14 @@
 let
   sources = import ../npins;
 
-  # After every successful build, push the result and its full closure
-  # (including build-time dependencies like cross-GHC) to the binary cache.
-  # Uses jappie's SSH key since the nix daemon runs as root.
+  # After every successful build, push the result to the megavid binary cache.
+  # Uses jappie's SSH key since the nix daemon runs as root but root
+  # doesn't have its own key authorized on the remote.
   pushToCacheScript = pkgs.writeShellScript "push-to-binary-cache" ''
     set -uf
-    export NIX_SSHOPTS="-i /home/jappie/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
-
-    # Runtime closure of the outputs
-    RUNTIME=$(${pkgs.nix}/bin/nix-store -qR $OUT_PATHS 2>/dev/null) || true
-
-    # Build-time dependencies: for each output, find its deriver (.drv),
-    # query the .drv's immediate input derivations, map them to their
-    # output paths, and include those that exist in the store.
-    BUILD=""
-    for out in $OUT_PATHS; do
-      DRV=$(${pkgs.nix}/bin/nix-store -qd "$out" 2>/dev/null) || continue
-      # Get input derivation paths, then resolve each to its output
-      for inputDrv in $(${pkgs.nix}/bin/nix-store -qR "$DRV" 2>/dev/null | grep '\.drv$'); do
-        for inputOut in $(${pkgs.nix}/bin/nix-store -q --outputs "$inputDrv" 2>/dev/null); do
-          if [ -e "$inputOut" ]; then
-            BUILD="$BUILD $inputOut"
-            # Include the runtime closure of each build dep too
-            BUILD="$BUILD $(${pkgs.nix}/bin/nix-store -qR "$inputOut" 2>/dev/null)" || true
-          fi
-        done
-      done
-    done
-
-    # Deduplicate
-    PATHS=$(echo "$RUNTIME $BUILD" | tr ' ' '\n' | sort -u | grep '^/nix/store/' || true)
-    COUNT=$(echo "$PATHS" | wc -w)
-    echo "pushing $COUNT paths to binary cache" >&2
-
-    echo "$PATHS" | xargs ${pkgs.nix}/bin/nix copy --to ssh-ng://root@videocut.org 2>&1 || \
+    echo "pushing to binary cache: $OUT_PATHS" >&2
+    NIX_SSHOPTS="-i /home/jappie/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
+      ${pkgs.nix}/bin/nix copy --to ssh-ng://root@videocut.org $OUT_PATHS 2>&1 || \
       echo "WARNING: failed to push to binary cache" >&2
   '';
 in
