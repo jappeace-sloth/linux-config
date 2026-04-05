@@ -50,6 +50,48 @@ let
 
   nixos = pkgs.writeShellScriptBin "nixos" "${../scripts/rebuild.sh} $@";
 
+  # Push the full build closure of a nix expression to the binary cache.
+  # Includes build-time dependencies (cross-GHC, NDK, etc.), not just runtime.
+  # Usage: push-jappie nix/android.nix
+  push-jappie = pkgs.writeShellScriptBin "push-jappie" ''
+    set -euf
+    if [ $# -eq 0 ]; then
+      echo "Usage: push-jappie <nix-file-or-store-path> [nix-file...]" >&2
+      exit 1
+    fi
+
+    for arg in "$@"; do
+      if [ -e /nix/store/"$(basename "$arg")" ] || echo "$arg" | grep -q '^/nix/store/'; then
+        # It's a store path, push its closure directly
+        echo "Pushing closure of store path: $arg" >&2
+        ${pkgs.nix}/bin/nix copy --to ssh-ng://root@videocut.org \
+          $(${pkgs.nix}/bin/nix-store -qR "$arg")
+      else
+        # It's a nix expression, instantiate to get the .drv
+        echo "Instantiating: $arg" >&2
+        DRV=$(${pkgs.nix}/bin/nix-instantiate "$arg")
+        echo "Collecting realized build inputs from: $DRV" >&2
+
+        PATHS=""
+        for inputDrv in $(${pkgs.nix}/bin/nix-store -qR "$DRV" | grep '\.drv$'); do
+          for out in $(${pkgs.nix}/bin/nix-store -q --outputs "$inputDrv"); do
+            if [ -e "$out" ]; then
+              PATHS="$PATHS $out"
+            fi
+          done
+        done
+
+        DEDUPED=$(echo "$PATHS" | tr ' ' '\n' | sort -u | grep '^/nix/store/')
+        COUNT=$(echo "$DEDUPED" | wc -l)
+        echo "Pushing $COUNT paths to binary cache" >&2
+
+        echo "$DEDUPED" | xargs ${pkgs.nix}/bin/nix copy --to ssh-ng://root@videocut.org
+      fi
+    done
+
+    echo "Done" >&2
+  '';
+
   # Me to the max
   maxme = pkgs.writeShellScriptBin "maxme" ''emacsclient . &!'';
 
@@ -246,6 +288,7 @@ in
       zip
       # ib-tws
       resize-images
+      push-jappie
       lz4
 
       hyperfine # better time command
