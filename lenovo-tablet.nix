@@ -6,10 +6,9 @@ let
   # Only on this machine — the work machines are used for client projects.
   pushToCacheScript = pkgs.writeShellScript "push-to-binary-cache" ''
     set -uf
-    echo "pushing to binary cache: $OUT_PATHS" >&2
-    NIX_SSHOPTS="-i /home/jappie/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
-      ${pkgs.nix}/bin/nix copy --to ssh-ng://root@videocut.org $OUT_PATHS 2>&1 || \
-      echo "WARNING: failed to push to binary cache" >&2
+    ${pkgs.systemd}/bin/systemd-run --no-block --collect \
+      env NIX_SSHOPTS="-i /home/jappie/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
+      ${pkgs.nix}/bin/nix copy --to ssh-ng://root@videocut.org $OUT_PATHS
   '';
 in
 {
