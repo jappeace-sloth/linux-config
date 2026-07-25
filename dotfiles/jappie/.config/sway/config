@@ -224,8 +224,6 @@ bindsym --whole-window --input-device="1267:12926:ELAN06FA:00_04F3:327E_Mouse" b
 # Catch the middle click RELEASE and inject a left click RELEASE
 bindsym --whole-window --release --input-device="1267:12926:ELAN06FA:00_04F3:327E_Mouse" button2 seat - cursor release button1
 
-exec --no-startup-id xfce4-panel --disable-wm-check
-
 assign [class="Steam"] $w1
 assign [class="transmission" instance="transmission-qt" title="Transmission"] $w1
 assign [class="Chromium"] $w8
