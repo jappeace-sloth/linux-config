@@ -51,5 +51,8 @@ ln -sf $CONFIG/startup.sh $HOME/.config/
 ln -sf $CONFIG/starship.toml $HOME/.config/
 ln -sf $CONFIG/mutt $HOME/.config/
 ln -sf $CONFIG/zsh-hacks.sh $HOME/.config/
+# -n: don't dereference an existing $HOME/.config/git-hooks symlink,
+# plain -sf would create a nested git-hooks/git-hooks on a re-run
+ln -sfn $CONFIG/git-hooks $HOME/.config/
 ln -sf $CONFIG/keepassxc/keepassxc.ini $HOME/.config/keepassxc/keepassxc.ini
 ln -sf $USER/.emacs.d/configuration.org $HOME/.config/emacsconfig.org
