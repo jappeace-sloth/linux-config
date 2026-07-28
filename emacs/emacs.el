@@ -392,6 +392,8 @@ line."
                             dirvish-file-clipboard)))
       (dolist (source-file colliding)
         (dirvish-paste-as-new-name source-file target-directory))
+      ;; only the interactive copies need this revert: the async
+      ;; dirvish-yank handler below reverts by itself on completion
       (if colliding
           (revert-buffer)
         nil)
