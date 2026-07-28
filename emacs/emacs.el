@@ -340,19 +340,88 @@ h/l, paste with p."
   (message "dirvish: yanked %s"
            (mapconcat #'file-name-nondirectory dirvish-file-clipboard ", ")))
 
+(defun dirvish-paste-collides-p (source-file target-directory)
+  "Non-nil when pasting SOURCE-FILE into TARGET-DIRECTORY hits an existing name.
+Pasting a file back into its own directory is the common case: the
+target name is the source itself."
+  (file-exists-p (expand-file-name (file-name-nondirectory source-file)
+                                   target-directory)))
+
+(defun dirvish-paste-as-new-name (source-file target-directory)
+  "Ask for a name and copy SOURCE-FILE into TARGET-DIRECTORY under it.
+The prompt is prefilled with the old name so it can be edited in
+place: yank a file, paste it where it already lives, tweak the name,
+and the old file serves as a template for the new one. Keeps asking
+while the chosen name is already taken; C-g aborts."
+  (let ((new-name (read-string
+                   (format "dirvish: %s exists here, paste as: "
+                           (file-name-nondirectory source-file))
+                   (file-name-nondirectory source-file))))
+    (if (file-exists-p (expand-file-name new-name target-directory))
+        (progn
+          (message "dirvish: %s is also taken, pick another name" new-name)
+          (sit-for 1)
+          (dirvish-paste-as-new-name source-file target-directory))
+      ;; dired-copy-file instead of copy-file: it recurses into
+      ;; directories (dired-recursive-copies) so a yanked folder can be
+      ;; templated the same way
+      (dired-copy-file source-file
+                       (expand-file-name new-name target-directory)
+                       nil))))
+
 (defun dirvish-paste-clipboard ()
   "Copy the clipboard files into the listed directory (ranger's pp).
 The clipboard is kept afterwards so one yank can paste repeatedly.
-Name collisions prompt before overwriting. The copy runs through the
+A file whose name already exists here (typically a paste into the
+directory it was yanked from) prompts for a new name instead, see
+`dirvish-paste-as-new-name'. Collision-free files run through the
 dirvish-yank machinery: an async child emacs, progress in the mode
 line."
   (interactive)
   (require 'dirvish-yank)
   (if (null dirvish-file-clipboard)
       (user-error "dirvish: file clipboard is empty, yank files with yy first")
-    (dirvish-yank-default-handler
-     'dired-copy-file dirvish-file-clipboard
-     (expand-file-name (dired-current-directory)))))
+    (let* ((target-directory (expand-file-name (dired-current-directory)))
+           (colliding (seq-filter
+                       (lambda (source-file)
+                         (dirvish-paste-collides-p source-file target-directory))
+                       dirvish-file-clipboard))
+           (collision-free (seq-remove
+                            (lambda (source-file)
+                              (dirvish-paste-collides-p source-file target-directory))
+                            dirvish-file-clipboard)))
+      (dolist (source-file colliding)
+        (dirvish-paste-as-new-name source-file target-directory))
+      ;; only the interactive copies need this revert: the async
+      ;; dirvish-yank handler below reverts by itself on completion
+      (if colliding
+          (revert-buffer)
+        nil)
+      (if collision-free
+          (dirvish-yank-default-handler
+           'dired-copy-file collision-free target-directory)
+        nil))))
+
+;; Decision: git-triggered listing refresh goes through a global
+;; core.hooksPath (dotfiles/jappie/.config/git-hooks) whose post-merge,
+;; post-checkout, post-rewrite and post-applypatch hooks call this
+;; function over emacsclient (the emacs systemd service means a daemon
+;; is always there to answer). Considered instead: emacs-side polling
+;; via global-auto-revert-non-file-buffers, rejected because it stats
+;; every dired buffer on a timer and still lags up to 5 seconds behind
+;; the pull; and magit-post-refresh-hook, rejected because it only sees
+;; git commands issued from inside emacs, not from a terminal.
+(defun jappie-dired-revert-all ()
+  "Revert every dired/dirvish listing whose directory still exists.
+The global git hooks in dotfiles/jappie/.config/git-hooks call this via
+emacsclient after git changes the worktree (pull, checkout, rebase), so
+open listings show the new files immediately."
+  (dolist (listing (buffer-list))
+    (with-current-buffer listing
+      (if (and (derived-mode-p 'dired-mode)
+               (file-directory-p default-directory))
+          (revert-buffer)
+        nil))))
 
 (defun dirvish-toggle-mark ()
   "Toggle the dired mark of the file at point, then move down a line.
@@ -391,6 +460,9 @@ means by t."
    ;; directories as listings and shows a placeholder for binaries
    ;; instead of dumping them in a buffer.
    dirvish-preview-disabled-exts '("bin" "exe" "gpg" "elc" "eln" "gz" "mkv" "iso" "mp4")
+   ;; re-read the listing from disk when revisiting a dired buffer, so
+   ;; walking away and back never shows a stale directory
+   dired-auto-revert-buffer t
    )
   ;; ranger-style navigation. ranger.el shipped its own vim keymap;
   ;; dirvish inherits dired's, where evil keeps h/l as char motions.
@@ -405,6 +477,12 @@ means by t."
     ;; (create dir, rename, copy, marks etc). Shadows evil's backward
     ;; search, which is no loss in a file listing.
     "?" 'dirvish-dispatch
+    ;; manual refresh for when the directory changed under the listing
+    ;; (a git pull in a terminal, rm, a build). gr is the evil
+    ;; convention for revert; SPC r does the same. The git hooks in
+    ;; dotfiles/jappie/.config/git-hooks push the same refresh
+    ;; automatically, see jappie-dired-revert-all.
+    "gr" 'revert-buffer
     ;; i as in insert: pops the file creation buffer, see
     ;; dirvish-oil-insert. Shadows plain insert state, which is useless
     ;; in a read-only listing anyway (wdired via C-x C-q still works
