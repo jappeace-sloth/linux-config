@@ -26,6 +26,7 @@ boot.binfmt.emulatedSystems = [ "aarch64-linux" ];
     ./nix/config.nix
     ./nix/environment.nix
     ./nix/email.nix
+    ./nix/git-hooks.nix
     ./nix/services.nix
   ];
 
