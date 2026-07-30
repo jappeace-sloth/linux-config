@@ -224,6 +224,18 @@ in
       };
       business = zohoEuAccount "hallo@jappiesoftware.com" // additiveBackup "mail-business";
 
+      # Google Workspace mailbox (the domain's MX points at smtp.google.com,
+      # not zoho). flavor gmail.com fills in the imap.gmail.com/smtp.gmail.com
+      # servers and defaults the auth to OAuth2, which Google requires; the
+      # login flow runs interactively once on first connect. Thunderbird-only
+      # like backup-personal: not mbsync-backed-up, that would need XOAUTH2.
+      webwinkelverhuis = {
+        address = "jappie@webwinkelverhuis.nl";
+        realName = "Jappie Klooster";
+        flavor = "gmail.com";
+        thunderbird.enable = true;
+      };
+
       # Not mbsync-backed-up: this is a Microsoft/hotmail mailbox, and MS has
       # been retiring basic-auth IMAP on personal accounts in favour of OAuth2,
       # so a plain passwordCommand is unreliable here. It stays a Thunderbird
@@ -271,6 +283,7 @@ in
         # primary (that stays personal)
         accountsOrder = [
           "business"
+          "webwinkelverhuis"
           "personal"
           "backup-personal"
         ];
