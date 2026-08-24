@@ -144,8 +144,72 @@ let
       port = 465;
       tls.enable = true;
     };
-    thunderbird.enable = true;
+    thunderbird = {
+      enable = true;
+      perIdentitySettings = plainTextIdentitySettings;
+    };
   };
+
+  # Decision: every identity composes and signs in plain text, enforced
+  # per identity rather than via the mail.identity.default.* fallbacks.
+  # The fallback prefs only apply while prefs.js has no explicit
+  # per-identity value, and a previously hand-configured machine may
+  # have one; the per-identity entries land in user.js, which wins on
+  # every start. compose_html=false makes new messages plain text,
+  # htmlSigFormat=false makes Thunderbird read htmlSigText as literal
+  # text instead of HTML. suppress_signature_separator drops the "-- "
+  # line Thunderbird prepends to signatures: the signature blocks below
+  # carry their own greeting ("Met vriendelijke groet,"), and a
+  # delimiter between body and greeting reads as a glitch. It also
+  # keeps replies byte-identical in style to the cold-mail sender,
+  # which appends its signature without a separator.
+  plainTextIdentitySettings = id: {
+    "mail.identity.id_${id}.compose_html" = false;
+    "mail.identity.id_${id}.htmlSigFormat" = false;
+    "mail.identity.id_${id}.suppress_signature_separator" = true;
+  };
+
+  # home-manager's signature.showSignature defaults to "none", which
+  # blanks the text; "append" is what actually puts it under each mail.
+  appendSignature = text: {
+    signature = {
+      inherit text;
+      showSignature = "append";
+    };
+  };
+
+  # Decision: the webwinkelverhuis signature is copied verbatim from the
+  # cold-mail sender (mijn-webwinkel-migraine, SendOutreach.outreachSignature
+  # with jappie@webwinkelverhuis.nl as the from-address), so replies written
+  # from Thunderbird are indistinguishable from the campaign mail they answer.
+  # That module is also why jappiesoftware.com appears nowhere in this block:
+  # cold mail stays single-branded. If the sender's signature changes, update
+  # this copy too.
+  webwinkelverhuisSignature = ''
+    Met vriendelijke groet,
+
+    Jappie Klooster
+    Webwinkelverhuis (een dienst van Jappie Software B.V., KvK 95097872)
+    jappie@webwinkelverhuis.nl
+    https://webwinkelverhuis.nl
+    06-44237437'';
+
+  # Same structure as the webwinkelverhuis block, branded for the B.V. itself.
+  jappieSoftwareSignature = ''
+    Met vriendelijke groet,
+
+    Jappie Klooster
+    Jappie Software B.V. (KvK 95097872)
+    hallo@jappiesoftware.com
+    https://jappiesoftware.com
+    06-44237437'';
+
+  # Personal mail signs with the blog only; no company footer.
+  personalSignature = ''
+    Groeten,
+
+    Jappie Klooster
+    https://jappie.me'';
 
   # Decision: the Send Later addon (scheduled email sending) is installed
   # through Thunderbird's enterprise policy ExtensionSettings, force_installed
@@ -219,10 +283,17 @@ in
     accounts.email.maildirBasePath = "/home/jappie/docs/email";
 
     accounts.email.accounts = {
-      personal = zohoEuAccount "hi@jappie.me" // additiveBackup "mail-personal" // {
-        primary = true;
-      };
-      business = zohoEuAccount "hallo@jappiesoftware.com" // additiveBackup "mail-business";
+      personal =
+        zohoEuAccount "hi@jappie.me"
+        // additiveBackup "mail-personal"
+        // appendSignature personalSignature
+        // {
+          primary = true;
+        };
+      business =
+        zohoEuAccount "hallo@jappiesoftware.com"
+        // additiveBackup "mail-business"
+        // appendSignature jappieSoftwareSignature;
 
       # Google Workspace mailbox (the domain's MX points at smtp.google.com,
       # not zoho). flavor gmail.com fills in the imap.gmail.com/smtp.gmail.com
@@ -233,8 +304,11 @@ in
         address = "jappie@webwinkelverhuis.nl";
         realName = "Jappie Klooster";
         flavor = "gmail.com";
-        thunderbird.enable = true;
-      };
+        thunderbird = {
+          enable = true;
+          perIdentitySettings = plainTextIdentitySettings;
+        };
+      } // appendSignature webwinkelverhuisSignature;
 
       # Not mbsync-backed-up: this is a Microsoft/hotmail mailbox, and MS has
       # been retiring basic-auth IMAP on personal accounts in favour of OAuth2,
@@ -258,8 +332,9 @@ in
             "mail.server.server_${id}.authMethod" = 10;
             "mail.smtpserver.smtp_${id}.authMethod" = 10;
           };
+          perIdentitySettings = plainTextIdentitySettings;
         };
-      };
+      } // appendSignature personalSignature;
     };
 
     programs.mbsync.enable = true;
@@ -308,6 +383,18 @@ in
           # Unlike the sort prefs above this applies on next start, no
           # profile wipe needed.
           "intl.date_time.pattern_override.date_short" = "dd-MM-yyyy";
+
+          # Deliver plain text even if a message was composed in HTML
+          # anyway (e.g. a forward of an HTML mail). Values are
+          # nsIMsgCompSendFormat: 1 = plain text, 2 = HTML, 3 = both,
+          # 4 = auto (the Thunderbird default). Composing itself is
+          # already forced to plain text per identity, see
+          # plainTextIdentitySettings.
+          "mail.default_send_format" = 1;
+          # Fallback for identities not declared here (mail.identity.id_N
+          # prefs shadow this default): any account added by hand in the
+          # UI also starts out composing plain text.
+          "mail.identity.default.compose_html" = false;
         };
       };
     };
