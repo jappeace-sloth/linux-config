@@ -306,6 +306,27 @@ in
         flavor = "gmail.com";
         thunderbird = {
           enable = true;
+          # Decision: SMTP authenticates with a normal password (3) instead
+          # of the flavor's OAuth2 default (10). Sending from Thunderbird
+          # kept failing with "connection to smtp.gmail.com timed out".
+          # Measured 2 sep 2026: a scripted password-authenticated send
+          # from the same machine went through on both 587/STARTTLS and
+          # 465/SSL, so network, server and app password are proven good
+          # and only Thunderbird's own path fails. Prime suspect is the
+          # OAuth2 token flow (the timeout wording need not mean a
+          # TCP-level failure), but that part is diagnosis, not
+          # measurement: this change moves Thunderbird onto the auth
+          # route that was measured working, and the first send after a
+          # rebuild is the real test; if that still times out the cause
+          # is elsewhere (proxy, IPv6) and this pref was not it. The
+          # password is the Gmail app password the outreach sender
+          # already uses (megavid secrets/outreach-smtp.age); it is NOT
+          # declared here, Thunderbird prompts once on first send and
+          # stores it itself. IMAP stays on OAuth2, which works fine for
+          # receiving.
+          settings = id: {
+            "mail.smtpserver.smtp_${id}.authMethod" = 3;
+          };
           perIdentitySettings = plainTextIdentitySettings;
         };
       } // appendSignature webwinkelverhuisSignature;
