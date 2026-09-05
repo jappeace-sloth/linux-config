@@ -320,9 +320,12 @@ in
       binutils # eg nm and other lowlevel cruft
       radare2
 
+      #games!!!
       openttd
-      tldr
+      gzdoom
       openra
+
+      tldr
 
       # devpackeges.haskellPackages.cut-the-crap
       # pkgs.haskellPackages.cut-the-crap
