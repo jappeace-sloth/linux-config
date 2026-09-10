@@ -10,6 +10,7 @@
     ./nix/email.nix
     ./nix/git-hooks.nix
     ./nix/services.nix
+    ./nix/sway.nix
     /etc/nixos/cachix.nix
   ];
 
