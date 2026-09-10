@@ -8,7 +8,6 @@
     ./nix/config.nix
     ./nix/environment.nix
     ./nix/email.nix
-    ./nix/git-hooks.nix
     ./nix/services.nix
     /etc/nixos/cachix.nix
   ];

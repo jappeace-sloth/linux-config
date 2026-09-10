@@ -11,10 +11,10 @@
 # so some address was always forgotten somewhere. Declaring them here
 # makes every machine converge on the same account list; only the
 # authentication of each account remains a manual, per machine step.
-# Adoption is deliberately narrow: only email and the global git hooks
-# (nix/git-hooks.nix) live in home-manager, all other dotfiles keep using the
-# symlink scheme from scripts/install-nixos.sh, which allows live editing
-# without a rebuild.
+# Adoption is deliberately narrow: only what cannot reasonably be a plain
+# dotfile lives in home-manager, all other dotfiles keep using the symlink
+# scheme from scripts/install-nixos.sh, which allows live editing without a
+# rebuild.
 { pkgs, config, ... }:
 let
   sources = import ../npins;
