@@ -407,8 +407,14 @@ The clipboard is kept afterwards so one yank can paste repeatedly.
 
 A file whose name is already taken here, which is what pasting into the
 directory it was yanked from means, is copied under a generated free
-name: template.txt lands as template-copy.txt. The paste never stops to
-ask and never overwrites.
+name: template.txt lands as template-copy.txt. Nothing is overwritten
+and no name is asked for.
+
+Pasting a directory is the one case that still stops: `dired-copy-file'
+asks "Copy ... recursively?" unless `dired-recursive-copies' is set to
+always, and it defaults to top. That confirmation guards every dired
+copy of a directory, it is not something this command adds, and it is
+left in place.
 
 With a prefix argument the name is asked for instead, prefilled with the
 old one so it can be edited in place, see `dirvish-paste-as-new-name'.
