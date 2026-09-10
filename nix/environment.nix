@@ -438,15 +438,15 @@ in
 
       wdisplays # repair geoemtry of external monitors in wayland
       /* TO MAKE IT PERMENANT
+      drag the screens into place with wdisplays, then read the result off:
       swaymsg -t get_outputs
 
-      modify sway/config with:
+      and write it into the table in nix/sway.nix, as
       output <name> resolution <width>x<height> position <x>,<y>
-      for example:
-
-# beamer setup wooo
-output DP-1 resolution 1280x720 position 0,0
-output eDP-1 resolution 2880x1800 position 0,720
+      keyed by this machine's hostname. Those stanzas used to sit at the
+      bottom of the sway dotfile, but output names repeat across machines
+      (DP-1 is the beamer on the laptops and a TV on the work machine), so
+      they have to be per host. nixos-rebuild switch, then swaymsg reload.
 
 # and so I forget the name of wdisplays again hahaha
 # I shall be the most useless software grifter this planet ever saw and shall see.
