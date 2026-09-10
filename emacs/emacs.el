@@ -60,9 +60,16 @@
 (setq x-select-enable-clipboard-manager nil)
 
 ;;; I'm not a mouse peasant (disable menu/toolbars)
-(tool-bar-mode -1) ;; disables tool buttons (little icons)
-(menu-bar-mode -1) ;; disables file edit help etc
-(scroll-bar-mode -1) ;; disables scrol bar
+;; Guarded because each of these only exists in a build with the matching
+;; toolkit. On emacs-unstable-pgtk, what emacs.nix builds, all three are
+;; there and this is the plain three calls it always was. Elsewhere a void
+;; function here aborts the rest of the file: emacs -Q --batch has no
+;; tool-bar-mode and emacs-nox has no scroll-bar-mode, which made the config
+;; impossible to load headlessly and so impossible to test.
+(dolist (mouse-peasantry '(tool-bar-mode menu-bar-mode scroll-bar-mode))
+  (if (fboundp mouse-peasantry)
+      (funcall mouse-peasantry -1)
+    nil))
 
 (global-hl-line-mode +1) ;; highlight current line
 
@@ -411,10 +418,10 @@ name: template.txt lands as template-copy.txt. Nothing is overwritten
 and no name is asked for.
 
 Pasting a directory is the one case that still stops: `dired-copy-file'
-asks "Copy ... recursively?" unless `dired-recursive-copies' is set to
-always, and it defaults to top. That confirmation guards every dired
-copy of a directory, it is not something this command adds, and it is
-left in place.
+asks for confirmation of the recursive copy unless `dired-recursive-copies'
+is set to always, and it defaults to top. That confirmation guards every
+dired copy of a directory, it is not something this command adds, and it
+is left in place.
 
 With a prefix argument the name is asked for instead, prefilled with the
 old one so it can be edited in place, see `dirvish-paste-as-new-name'.

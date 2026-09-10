@@ -15,4 +15,9 @@ in
     system = "x86_64-linux";
     modules = [ ./lenovo-tablet.nix ];
   };
+
+  # nix-build -A emacs-tests
+  # Loads emacs.el headlessly and runs emacs/emacs-test.el against it, so a
+  # change that stops the config loading fails here rather than at login.
+  emacs-tests = import ./emacs/tests.nix { };
 }
