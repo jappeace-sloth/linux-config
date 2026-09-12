@@ -60,9 +60,16 @@
 (setq x-select-enable-clipboard-manager nil)
 
 ;;; I'm not a mouse peasant (disable menu/toolbars)
-(tool-bar-mode -1) ;; disables tool buttons (little icons)
-(menu-bar-mode -1) ;; disables file edit help etc
-(scroll-bar-mode -1) ;; disables scrol bar
+;; Guarded because each of these only exists in a build with the matching
+;; toolkit. On emacs-unstable-pgtk, what emacs.nix builds, all three are
+;; there and this is the plain three calls it always was. Elsewhere a void
+;; function here aborts the rest of the file: emacs -Q --batch has no
+;; tool-bar-mode and emacs-nox has no scroll-bar-mode, which made the config
+;; impossible to load headlessly and so impossible to test.
+(dolist (mouse-peasantry '(tool-bar-mode menu-bar-mode scroll-bar-mode))
+  (if (fboundp mouse-peasantry)
+      (funcall mouse-peasantry -1)
+    nil))
 
 (global-hl-line-mode +1) ;; highlight current line
 
@@ -340,12 +347,44 @@ h/l, paste with p."
   (message "dirvish: yanked %s"
            (mapconcat #'file-name-nondirectory dirvish-file-clipboard ", ")))
 
+(defun dirvish-refresh-listing ()
+  "Re-read the directory this listing shows, from disk (gr, or <f5>).
+Use after something changed the directory behind dirvish' back: a git
+pull in a terminal, a build, an rm.
+
+Passes IGNORE-AUTO explicitly rather than calling `revert-buffer' bare.
+dirvish caches per-file data (sizes, attributes) next to the listing and
+`dirvish-revert' only drops that cache when IGNORE-AUTO is set, which
+`revert-buffer' fills in from `current-prefix-arg' when a human invokes
+it and leaves nil when elisp calls it. Naming the command means the key
+and `dirvish-paste-clipboard' get the same full refresh."
+  (interactive)
+  (revert-buffer t t))
+
 (defun dirvish-paste-collides-p (source-file target-directory)
   "Non-nil when pasting SOURCE-FILE into TARGET-DIRECTORY hits an existing name.
 Pasting a file back into its own directory is the common case: the
 target name is the source itself."
   (file-exists-p (expand-file-name (file-name-nondirectory source-file)
                                    target-directory)))
+
+(defun dirvish-paste-free-name (source-file target-directory)
+  "Absolute path in TARGET-DIRECTORY for a copy of SOURCE-FILE nothing occupies.
+Appends -copy before the extension, so template.txt becomes
+template-copy.txt, then template-copy-2.txt and upwards while those are
+taken too. The extension is kept so the copy still opens in the mode the
+original did."
+  (let* ((stem (file-name-base source-file))
+         (extension (or (file-name-extension source-file t) ""))
+         (candidate (expand-file-name (concat stem "-copy" extension)
+                                      target-directory))
+         (attempt 2))
+    (while (file-exists-p candidate)
+      (setq candidate (expand-file-name
+                       (format "%s-copy-%d%s" stem attempt extension)
+                       target-directory))
+      (setq attempt (1+ attempt)))
+    candidate))
 
 (defun dirvish-paste-as-new-name (source-file target-directory)
   "Ask for a name and copy SOURCE-FILE into TARGET-DIRECTORY under it.
@@ -369,15 +408,29 @@ while the chosen name is already taken; C-g aborts."
                        (expand-file-name new-name target-directory)
                        nil))))
 
-(defun dirvish-paste-clipboard ()
+(defun dirvish-paste-clipboard (&optional ask-for-name)
   "Copy the clipboard files into the listed directory (ranger's pp).
 The clipboard is kept afterwards so one yank can paste repeatedly.
-A file whose name already exists here (typically a paste into the
-directory it was yanked from) prompts for a new name instead, see
-`dirvish-paste-as-new-name'. Collision-free files run through the
-dirvish-yank machinery: an async child emacs, progress in the mode
-line."
-  (interactive)
+
+A file whose name is already taken here, which is what pasting into the
+directory it was yanked from means, is copied under a generated free
+name: template.txt lands as template-copy.txt. Nothing is overwritten
+and no name is asked for.
+
+Pasting a directory is the one case that still stops: `dired-copy-file'
+asks for confirmation of the recursive copy unless `dired-recursive-copies'
+is set to always, and it defaults to top. That confirmation guards every
+dired copy of a directory, it is not something this command adds, and it
+is left in place.
+
+With a prefix argument the name is asked for instead, prefilled with the
+old one so it can be edited in place, see `dirvish-paste-as-new-name'.
+That is the way to use a yanked file as the template for a differently
+named one, which is worth a prompt because only the human knows the name.
+
+Collision-free files run through the dirvish-yank machinery: an async
+child emacs, progress in the mode line."
+  (interactive "P")
   (require 'dirvish-yank)
   (if (null dirvish-file-clipboard)
       (user-error "dirvish: file clipboard is empty, yank files with yy first")
@@ -389,13 +442,28 @@ line."
            (collision-free (seq-remove
                             (lambda (source-file)
                               (dirvish-paste-collides-p source-file target-directory))
-                            dirvish-file-clipboard)))
+                            dirvish-file-clipboard))
+           (generated-names nil))
+      ;; Sequential on purpose: each copy exists by the time the next
+      ;; free name is picked, so two files yanked under the same name do
+      ;; not both get handed template-copy.txt.
       (dolist (source-file colliding)
-        (dirvish-paste-as-new-name source-file target-directory))
-      ;; only the interactive copies need this revert: the async
-      ;; dirvish-yank handler below reverts by itself on completion
+        (if ask-for-name
+            (dirvish-paste-as-new-name source-file target-directory)
+          (let ((free-name (dirvish-paste-free-name source-file target-directory)))
+            ;; dired-copy-file, not copy-file: it recurses into
+            ;; directories (dired-recursive-copies) so a yanked folder
+            ;; pastes as a folder
+            (dired-copy-file source-file free-name nil)
+            (push (file-name-nondirectory free-name) generated-names))))
+      ;; only the copies above need this refresh: the async dirvish-yank
+      ;; handler below reverts by itself on completion
       (if colliding
-          (revert-buffer)
+          (dirvish-refresh-listing)
+        nil)
+      (if generated-names
+          (message "dirvish: pasted as %s"
+                   (mapconcat #'identity (nreverse generated-names) ", "))
         nil)
       (if collision-free
           (dirvish-yank-default-handler
@@ -403,8 +471,8 @@ line."
         nil))))
 
 ;; Decision: nothing watches git for us. Listings stay fresh through
-;; dired-auto-revert-buffer (re-read on revisit) and gr for an explicit
-;; refresh, both set up in the dirvish block below.
+;; dired-auto-revert-buffer (re-read on revisit) and
+;; `dirvish-refresh-listing' on gr or <f5> for an explicit refresh.
 ;;
 ;; A third layer used to sit on top: a global core.hooksPath whose
 ;; post-merge/post-checkout/post-rewrite/post-applypatch hooks called a
@@ -482,10 +550,12 @@ means by t."
     "?" 'dirvish-dispatch
     ;; manual refresh for when the directory changed under the listing
     ;; (a git pull in a terminal, rm, a build). gr is the evil
-    ;; convention for revert; SPC r does the same. This is the only
-    ;; refresh that is not tied to revisiting a buffer, see the comment
-    ;; above about the git hook that used to push one.
-    "gr" 'revert-buffer
+    ;; convention for revert, <f5> is the one every other program uses
+    ;; and needs no modifier. This is the only refresh that is not tied
+    ;; to revisiting a buffer, see the comment above about the git hook
+    ;; that used to push one.
+    "gr" 'dirvish-refresh-listing
+    (kbd "<f5>") 'dirvish-refresh-listing
     ;; i as in insert: pops the file creation buffer, see
     ;; dirvish-oil-insert. Shadows plain insert state, which is useless
     ;; in a read-only listing anyway (wdired via C-x C-q still works
