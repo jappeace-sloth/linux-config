@@ -21,9 +21,10 @@
 	keepBackup = false
 [core]
 	autocrlf = false
-	# global hooks: refresh emacs dired/dirvish listings after git
-	# changes the worktree, then chain to the repo's own hooks. See
-	# git-hooks/refresh-dired-and-chain.sh for the full story.
-	hooksPath = ~/.config/git-hooks
+	# Deliberately no hooksPath here. A global one used to point at
+	# ~/.config/git-hooks to refresh emacs dired listings on every
+	# checkout/merge; it made emacs stall and was removed. Setting
+	# core.hooksPath again means every repo-local hook has to be chained
+	# by hand, because git then looks in that directory and nowhere else.
 [commit]
 	#gpgsign = true

@@ -402,26 +402,29 @@ line."
            'dired-copy-file collision-free target-directory)
         nil))))
 
-;; Decision: git-triggered listing refresh goes through a global
-;; core.hooksPath (dotfiles/jappie/.config/git-hooks) whose post-merge,
-;; post-checkout, post-rewrite and post-applypatch hooks call this
-;; function over emacsclient (the emacs systemd service means a daemon
-;; is always there to answer). Considered instead: emacs-side polling
-;; via global-auto-revert-non-file-buffers, rejected because it stats
-;; every dired buffer on a timer and still lags up to 5 seconds behind
-;; the pull; and magit-post-refresh-hook, rejected because it only sees
-;; git commands issued from inside emacs, not from a terminal.
-(defun jappie-dired-revert-all ()
-  "Revert every dired/dirvish listing whose directory still exists.
-The global git hooks in dotfiles/jappie/.config/git-hooks call this via
-emacsclient after git changes the worktree (pull, checkout, rebase), so
-open listings show the new files immediately."
-  (dolist (listing (buffer-list))
-    (with-current-buffer listing
-      (if (and (derived-mode-p 'dired-mode)
-               (file-directory-p default-directory))
-          (revert-buffer)
-        nil))))
+;; Decision: nothing watches git for us. Listings stay fresh through
+;; dired-auto-revert-buffer (re-read on revisit) and gr for an explicit
+;; refresh, both set up in the dirvish block below.
+;;
+;; A third layer used to sit on top: a global core.hooksPath whose
+;; post-merge/post-checkout/post-rewrite/post-applypatch hooks called a
+;; jappie-dired-revert-all over emacsclient, so every open listing
+;; refreshed the moment git touched the worktree. Removed, it cost more
+;; than the staleness it fixed. Two reasons, worth writing down so it
+;; does not get reinvented:
+;;
+;;   - it reverted every dired buffer in the session, synchronously,
+;;     while git waited on the emacsclient call. dirvish keeps a buffer
+;;     per directory visited, so a day of browsing turns one git pull
+;;     into dozens of directory re-reads.
+;;   - run from magit it re-enters: emacs is blocked on the git
+;;     subprocess, the hook calls back into that same emacs over
+;;     emacsclient, and nothing can answer until the git command that
+;;     is waiting for the answer finishes.
+;;
+;; The polling alternative is no better: global-auto-revert-non-file-buffers
+;; stats every listing on a timer and still lags seconds behind the pull.
+;; A stale listing is a gr away, which is the cheap fix.
 
 (defun dirvish-toggle-mark ()
   "Toggle the dired mark of the file at point, then move down a line.
@@ -479,9 +482,9 @@ means by t."
     "?" 'dirvish-dispatch
     ;; manual refresh for when the directory changed under the listing
     ;; (a git pull in a terminal, rm, a build). gr is the evil
-    ;; convention for revert; SPC r does the same. The git hooks in
-    ;; dotfiles/jappie/.config/git-hooks push the same refresh
-    ;; automatically, see jappie-dired-revert-all.
+    ;; convention for revert; SPC r does the same. This is the only
+    ;; refresh that is not tied to revisiting a buffer, see the comment
+    ;; above about the git hook that used to push one.
     "gr" 'revert-buffer
     ;; i as in insert: pops the file creation buffer, see
     ;; dirvish-oil-insert. Shadows plain insert state, which is useless
